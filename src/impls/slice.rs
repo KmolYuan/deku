@@ -61,22 +61,6 @@ where
     }
 }
 
-impl<Ctx: Copy, T> DekuWriter<Ctx> for &[T]
-where
-    T: DekuWriter<Ctx>,
-{
-    fn to_writer<W: Write + Seek>(
-        &self,
-        writer: &mut Writer<W>,
-        ctx: Ctx,
-    ) -> Result<(), DekuError> {
-        for v in *self {
-            v.to_writer(writer, ctx)?;
-        }
-        Ok(())
-    }
-}
-
 impl<Ctx: Copy, T> DekuWriter<Ctx> for [T]
 where
     T: DekuWriter<Ctx>,
