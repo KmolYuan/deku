@@ -1,11 +1,11 @@
 use std::collections::HashSet;
 use std::hash::{BuildHasher, Hash};
 
-use crate::writer::Writer;
 use no_std_io::io::{Read, Seek, Write};
 
 use crate::ctx::*;
-use crate::{DekuError, DekuReader, DekuWriter};
+use crate::writer::Writer;
+use crate::{DekuError, DekuReader, DekuWriteSizeHint, DekuWriter};
 
 /// Read `T`s into a hashset until a given predicate returns true
 /// * `capacity` - an optional capacity to pre-allocate the hashset with
@@ -207,6 +207,12 @@ impl<T: DekuWriter<Ctx>, S, Ctx: Copy> DekuWriter<Ctx> for HashSet<T, S> {
             v.to_writer(writer, inner_ctx)?;
         }
         Ok(())
+    }
+}
+
+impl<T: DekuWriteSizeHint, S> DekuWriteSizeHint for HashSet<T, S> {
+    fn bit_size(&self) -> usize {
+        self.iter().fold(0, |acc, v| acc + v.bit_size())
     }
 }
 

@@ -10,6 +10,8 @@ use crate::reader::Reader;
 use crate::writer::Writer;
 use crate::{DekuError, DekuReader, DekuWriter};
 
+use super::ImplDekuSized;
+
 macro_rules! ImplDekuTraitsCtx {
     ($typ:ty, $readtype:ty, $ctx_arg:tt, $ctx_type:tt) => {
         impl DekuReader<'_, $ctx_type> for $typ {
@@ -60,6 +62,7 @@ macro_rules! ImplDekuTraits {
             (Endian, ByteSize, Order)
         );
         ImplDekuTraitsCtx!($typ, $readtype, endian, Endian);
+        ImplDekuSized!($typ);
     };
 }
 

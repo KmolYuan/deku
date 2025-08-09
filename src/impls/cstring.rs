@@ -2,12 +2,13 @@ use alloc::borrow::Cow;
 use alloc::ffi::CString;
 use alloc::format;
 use alloc::vec::Vec;
+use core::ffi::CStr;
 use no_std_io::io::{Read, Seek, Write};
 
+use crate::ctx::*;
 use crate::reader::Reader;
 use crate::writer::Writer;
-use crate::{ctx::*, DekuReader};
-use crate::{DekuError, DekuWriter};
+use crate::{DekuError, DekuReader, DekuWriteSizeHint, DekuWriter};
 
 impl<Ctx: Copy> DekuWriter<Ctx> for CString
 where
@@ -19,6 +20,20 @@ where
         ctx: Ctx,
     ) -> Result<(), DekuError> {
         let bytes = self.as_bytes_with_nul();
+        bytes.to_writer(writer, ctx)
+    }
+}
+
+impl<Ctx: Copy> DekuWriter<Ctx> for CStr
+where
+    u8: DekuWriter<Ctx>,
+{
+    fn to_writer<W: Write + Seek>(
+        &self,
+        writer: &mut Writer<W>,
+        ctx: Ctx,
+    ) -> Result<(), DekuError> {
+        let bytes = self.to_bytes_with_nul();
         bytes.to_writer(writer, ctx)
     }
 }
@@ -54,6 +69,18 @@ where
         })?;
 
         Ok(value)
+    }
+}
+
+impl DekuWriteSizeHint for CStr {
+    fn bit_size(&self) -> usize {
+        self.to_bytes_with_nul().bit_size()
+    }
+}
+
+impl DekuWriteSizeHint for CString {
+    fn bit_size(&self) -> usize {
+        self.as_bytes_with_nul().bit_size()
     }
 }
 

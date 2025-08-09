@@ -1,6 +1,9 @@
 use no_std_io::io::{Read, Seek, Write};
 
-use crate::{writer::Writer, DekuError, DekuReader, DekuWriter};
+use crate::writer::Writer;
+use crate::{
+    DekuError, DekuReadSizeHint, DekuReadSized, DekuReader, DekuWriteSizeHint, DekuWriter,
+};
 
 impl<'a, T: DekuReader<'a, Ctx>, Ctx: Copy> DekuReader<'a, Ctx> for Option<T> {
     fn from_reader_with_ctx<R: Read + Seek>(
@@ -20,6 +23,24 @@ impl<T: DekuWriter<Ctx>, Ctx: Copy> DekuWriter<Ctx> for Option<T> {
     ) -> Result<(), DekuError> {
         self.as_ref()
             .map_or(Ok(()), |v| v.to_writer(writer, inner_ctx))
+    }
+}
+
+impl<T: DekuReadSizeHint> DekuReadSizeHint for Option<T> {
+    const LOWER_BIT_SIZE: usize = T::LOWER_BIT_SIZE;
+    const UPPER_BIT_SIZE: usize = T::UPPER_BIT_SIZE;
+}
+
+impl<T: DekuReadSized> DekuReadSized for Option<T> {
+    const BIT_SIZE: usize = T::BIT_SIZE;
+}
+
+impl<T: DekuWriteSizeHint> DekuWriteSizeHint for Option<T> {
+    fn bit_size(&self) -> usize {
+        match self {
+            Some(v) => v.bit_size(),
+            None => 0,
+        }
     }
 }
 

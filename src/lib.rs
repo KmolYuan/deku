@@ -592,6 +592,64 @@ pub trait DekuContainerWrite: DekuWriter<()> {
     }
 }
 
+/// "ReadSizeHint" trait: obtain the guessed size for the receiver type
+///
+/// # Implementation details
+/// The guessed size types are:
+/// - Enums use largest variant and smallest variant as the size hint, this trait is also aimed to
+///   be implemented for id-tagged enums
+/// - Tuples/wrappers/structs use the sum of the size hints of their fields
+/// - Arrays `[T; N]` use the N times of the T size hints
+/// - Slice `[T]`/`CStr` **won't** implement this trait since they are not deserializable
+/// - Containers **won't** implement this trait since their sizes are unknown and meaningless
+/// - "Concrete" type implements [`DekuReadSized`] if the deserialized size is statically known
+pub trait DekuReadSizeHint {
+    /// The minimum buffer size required to deserialize this type
+    const LOWER_BIT_SIZE: usize;
+    /// The maximum buffer size required to deserialize this type
+    const UPPER_BIT_SIZE: usize;
+}
+
+/// "ReadSized" trait: obtain the compile-time known size of a type when reading from a buffer
+///
+/// # Implementation details
+/// The compile-time known size types are:
+/// - Primitives use the size of the type in bits
+/// - Tuples/wrappers/structs implements [`DekuReadSized`] if all fields implement [`DekuReadSized`]
+/// - Arrays `[T; N]` implements [`DekuReadSized`] if T implements [`DekuReadSized`]
+/// - Optional `Option<T>` implements [`DekuReadSized`] if T implements [`DekuReadSized`]
+pub trait DekuReadSized: DekuReadSizeHint {
+    /// The buffer size required to deserialize this type
+    const BIT_SIZE: usize;
+}
+
+/// "WriteSizeHint" trait: obtain the runtime-checkable size of a value
+///
+/// # Implementation details
+/// The runtime-checkable size types are:
+/// - Enums use the current variant size hint
+/// - Tuples/wrappers/structs use the sum of the size hints of their fields
+/// - Arrays `[T; N]` use the N times of the T size hints
+/// - Slices/containers use the length times the T size hints of the slice/container
+/// - Optional `Option<T>` use 0 if `None` and T size hint if `Some`
+/// - "Concrete" type implements [`DekuWriteSized`] if the serialized size is statically known
+pub trait DekuWriteSizeHint {
+    /// The buffer size required to serialize this type
+    fn bit_size(&self) -> usize;
+}
+
+/// "WriteSized" trait: obtain the compile-time known size of a type when writing to a buffer
+///
+/// # Implementation details
+/// The compile-time known size types are:
+/// - Primitives use the size of the type in bits
+/// - Tuples/wrappers/structs implements [`DekuWriteSized`] if all fields implement [`DekuWriteSized`]
+/// - Arrays `[T; N]` implements [`DekuWriteSized`] if T implements [`DekuWriteSized`]
+pub trait DekuWriteSized: DekuWriteSizeHint {
+    /// The buffer size required to serialize this type
+    const BIT_SIZE: usize;
+}
+
 /// "Updater" trait: apply mutations to a type
 pub trait DekuUpdate {
     /// Apply updates
