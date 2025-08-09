@@ -592,6 +592,64 @@ pub trait DekuContainerWrite: DekuWriter<()> {
     }
 }
 
+/// "Reader Size Hint" trait: obtain the guessed size of the type for readers
+///
+/// # Implementation details
+/// The guessed size types are:
+/// - Enums use largest variant and smallest variant as the size hint, this trait is also aimed to
+///   be implemented for id-tagged enums
+/// - Tuples/wrappers/structs use the sum of the size hints of their fields
+/// - Arrays `[T; N]` use the `N` times of the `T` size hints
+/// - Slice `[T]`/`CStr` **won't** implement this trait since they are not deserializable
+/// - Containers **won't** implement this trait since their sizes are unknown and meaningless
+/// - "Concrete" type implements [`DekuReadSized`] if the deserialized size is statically known, so
+///   their [`Self::LOWER_BIT_SIZE`] and [`Self::UPPER_BIT_SIZE`] are the same
+pub trait DekuReadSizeHint {
+    /// The minimum buffer size in bit required to deserialize this type
+    const LOWER_BIT_SIZE: usize;
+    /// The maximum buffer size in bit required to deserialize this type
+    const UPPER_BIT_SIZE: usize;
+}
+
+/// "Reader Sized" trait: obtain the compile-time known size of the type for readers
+///
+/// # Implementation details
+/// The compile-time known size types are:
+/// - Primitives use the memory size of the type
+/// - Tuples/wrappers/structs implements [`DekuReadSized`] if all fields implement [`DekuReadSized`]
+/// - Arrays `[T; N]` implements [`DekuReadSized`] if `T` implements [`DekuReadSized`]
+/// - Optional `Option<T>` implements [`DekuReadSized`] if `T` implements [`DekuReadSized`]
+pub trait DekuReadSized: DekuReadSizeHint {
+    /// The buffer size in bit required to deserialize this type
+    const BIT_SIZE: usize;
+}
+
+/// "Writer Size Hint" trait: obtain the runtime-checkable size of the type for writers
+///
+/// # Implementation details
+/// The runtime-checkable size types are:
+/// - Enums use the current variant size hint
+/// - Tuples/wrappers/structs use the sum of the size hints of their fields
+/// - Arrays/slices/containers iterate over the elements' size hints and sum them
+/// - Optional `Option<T>` use zero if `None` and `T` size hint if `Some`
+/// - "Concrete" type implements [`DekuWriteSized`] if the serialized size is statically known
+pub trait DekuWriteSizeHint {
+    /// The buffer size in bit required to serialize this type
+    fn bit_size(&self) -> usize;
+}
+
+/// "Write Sized" trait: obtain the compile-time known size of the type for writers
+///
+/// # Implementation details
+/// The compile-time known size types are:
+/// - Primitives use the memory size of the type
+/// - Tuples/wrappers/structs implements [`DekuWriteSized`] if all fields implement [`DekuWriteSized`]
+/// - Arrays `[T; N]` implements [`DekuWriteSized`] if `T` implements [`DekuWriteSized`]
+pub trait DekuWriteSized: DekuWriteSizeHint {
+    /// The buffer size in bit required to serialize this type
+    const BIT_SIZE: usize;
+}
+
 /// "Updater" trait: apply mutations to a type
 pub trait DekuUpdate {
     /// Apply updates

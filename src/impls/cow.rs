@@ -6,6 +6,8 @@ use crate::reader::Reader;
 use crate::writer::Writer;
 use crate::{DekuError, DekuReader, DekuWriter};
 
+use super::ImplDekuPointerSized;
+
 impl<'a, T, Ctx> DekuReader<'a, Ctx> for Cow<'a, T>
 where
     T: DekuReader<'a, Ctx> + Clone,
@@ -34,6 +36,8 @@ where
         (self.borrow() as &T).to_writer(writer, inner_ctx)
     }
 }
+
+ImplDekuPointerSized!(Cow<'_, T: Clone>);
 
 #[cfg(test)]
 mod tests {

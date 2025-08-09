@@ -5,7 +5,7 @@ use no_std_io::io::{Read, Seek, Write};
 
 use crate::ctx::*;
 use crate::writer::Writer;
-use crate::{DekuError, DekuReader, DekuWriter};
+use crate::{DekuError, DekuReader, DekuWriteSizeHint, DekuWriter};
 
 /// Read `K, V`s into a hashmap until a given predicate returns true
 /// * `capacity` - an optional capacity to pre-allocate the hashmap with
@@ -219,6 +219,13 @@ impl<K: DekuWriter<Ctx>, V: DekuWriter<Ctx>, S, Ctx: Copy> DekuWriter<Ctx> for H
             kv.to_writer(writer, inner_ctx)?;
         }
         Ok(())
+    }
+}
+
+impl<K: DekuWriteSizeHint, V: DekuWriteSizeHint, S> DekuWriteSizeHint for HashMap<K, V, S> {
+    fn bit_size(&self) -> usize {
+        self.iter()
+            .fold(0, |acc, (k, v)| acc + k.bit_size() + v.bit_size())
     }
 }
 

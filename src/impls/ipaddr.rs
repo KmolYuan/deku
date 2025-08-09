@@ -4,7 +4,9 @@ use no_std_io::io::{Read, Seek, Write};
 
 use crate::reader::Reader;
 use crate::writer::Writer;
-use crate::{DekuError, DekuReader, DekuWriter};
+use crate::{DekuError, DekuReader, DekuWriteSizeHint, DekuWriter};
+
+use super::ImplDekuSized;
 
 impl<'a, Ctx> DekuReader<'a, Ctx> for Ipv4Addr
 where
@@ -73,6 +75,17 @@ where
         match self {
             IpAddr::V4(ipv4) => ipv4.to_writer(writer, ctx),
             IpAddr::V6(ipv6) => ipv6.to_writer(writer, ctx),
+        }
+    }
+}
+
+ImplDekuSized!(Ipv4Addr, Ipv6Addr);
+
+impl DekuWriteSizeHint for IpAddr {
+    fn bit_size(&self) -> usize {
+        match self {
+            IpAddr::V4(ipv4) => ipv4.bit_size(),
+            IpAddr::V6(ipv6) => ipv6.bit_size(),
         }
     }
 }

@@ -12,6 +12,8 @@ use crate::reader::{Reader, ReaderRet};
 use crate::writer::Writer;
 use crate::{DekuError, DekuReader, DekuWriter};
 
+use super::ImplDekuSized;
+
 /// "Read" trait: read bits and construct type
 #[cfg(feature = "bits")]
 trait DekuRead<'a, Ctx = ()> {
@@ -1195,6 +1197,8 @@ ImplDekuTraitsUnsigned!(f32, u32);
 ImplDekuTraitsBytesUnsigned!(f32, u32);
 ImplDekuTraitsUnsigned!(f64, u64);
 ImplDekuTraitsBytesUnsigned!(f64, u64);
+
+ImplDekuSized!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, f32, f64);
 
 #[cfg(test)]
 mod tests {

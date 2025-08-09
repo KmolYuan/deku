@@ -4,10 +4,10 @@ use alloc::format;
 use alloc::vec::Vec;
 use no_std_io::io::{Read, Seek, Write};
 
+use crate::ctx::*;
 use crate::reader::Reader;
 use crate::writer::Writer;
-use crate::{ctx::*, DekuReader};
-use crate::{DekuError, DekuWriter};
+use crate::{DekuError, DekuReader, DekuWriteSizeHint, DekuWriter};
 
 impl<Ctx: Copy> DekuWriter<Ctx> for CString
 where
@@ -54,6 +54,12 @@ where
         })?;
 
         Ok(value)
+    }
+}
+
+impl DekuWriteSizeHint for CString {
+    fn bit_size(&self) -> usize {
+        self.as_bytes_with_nul().bit_size()
     }
 }
 

@@ -1,10 +1,12 @@
 //! Implementations of DekuRead and DekuWrite for tuples of length 1 to 11
 
-use crate::writer::Writer;
-
 use no_std_io::io::{Read, Seek, Write};
 
-use crate::{DekuError, DekuReader, DekuWriter};
+use crate::writer::Writer;
+use crate::{
+    DekuError, DekuReadSizeHint, DekuReadSized, DekuReader, DekuWriteSizeHint, DekuWriteSized,
+    DekuWriter,
+};
 
 // Trait to help us build intermediate tuples while DekuRead'ing each element
 // from the tuple
@@ -65,6 +67,27 @@ macro_rules! ImplDekuTupleTraits {
                 )+
                 Ok(())
             }
+        }
+
+        impl<$($T: DekuReadSizeHint),+> DekuReadSizeHint for ($($T,)+) {
+            const LOWER_BIT_SIZE: usize = 0 $(+ $T::LOWER_BIT_SIZE)+;
+            const UPPER_BIT_SIZE: usize = 0 $(+ $T::UPPER_BIT_SIZE)+;
+        }
+
+        impl<$($T: DekuReadSized),+> DekuReadSized for ($($T,)+) {
+            const BIT_SIZE: usize = 0 $(+ $T::BIT_SIZE)+;
+        }
+
+        impl<$($T: DekuWriteSizeHint),+> DekuWriteSizeHint for ($($T,)+) {
+            fn bit_size(&self) -> usize {
+                #[allow(non_snake_case)]
+                let ($(ref $T,)+) = *self;
+                0 $(+ $T.bit_size())+
+            }
+        }
+
+        impl<$($T: DekuWriteSized),+> DekuWriteSized for ($($T,)+) {
+            const BIT_SIZE: usize = 0 $(+ $T::BIT_SIZE)+;
         }
     };
 }

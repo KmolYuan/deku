@@ -1,10 +1,15 @@
 //! Implementations of DekuRead and DekuWrite for [T; N] where 0 < N <= 32
 
-use crate::reader::Reader;
-use crate::writer::Writer;
-use crate::{DekuError, DekuReader, DekuWriter};
+use core::ffi::CStr;
 use core::mem::MaybeUninit;
 use no_std_io::io::{Read, Seek, Write};
+
+use crate::reader::Reader;
+use crate::writer::Writer;
+use crate::{
+    DekuError, DekuReadSizeHint, DekuReadSized, DekuReader, DekuWriteSizeHint, DekuWriteSized,
+    DekuWriter,
+};
 
 impl<'a, Ctx: Copy, T, const N: usize> DekuReader<'a, Ctx> for [T; N]
 where
@@ -74,6 +79,51 @@ where
             v.to_writer(writer, ctx)?;
         }
         Ok(())
+    }
+}
+
+impl<Ctx: Copy> DekuWriter<Ctx> for CStr
+where
+    u8: DekuWriter<Ctx>,
+{
+    fn to_writer<W: Write + Seek>(
+        &self,
+        writer: &mut Writer<W>,
+        ctx: Ctx,
+    ) -> Result<(), DekuError> {
+        let bytes = self.to_bytes_with_nul();
+        bytes.to_writer(writer, ctx)
+    }
+}
+
+impl<T: DekuReadSizeHint, const N: usize> DekuReadSizeHint for [T; N] {
+    const LOWER_BIT_SIZE: usize = T::LOWER_BIT_SIZE * N;
+    const UPPER_BIT_SIZE: usize = T::UPPER_BIT_SIZE * N;
+}
+
+impl<T: DekuReadSized, const N: usize> DekuReadSized for [T; N] {
+    const BIT_SIZE: usize = T::BIT_SIZE * N;
+}
+
+impl<T: DekuWriteSizeHint, const N: usize> DekuWriteSizeHint for [T; N] {
+    fn bit_size(&self) -> usize {
+        self.as_slice().bit_size()
+    }
+}
+
+impl<T: DekuWriteSized, const N: usize> DekuWriteSized for [T; N] {
+    const BIT_SIZE: usize = T::BIT_SIZE * N;
+}
+
+impl<T: DekuWriteSizeHint> DekuWriteSizeHint for [T] {
+    fn bit_size(&self) -> usize {
+        self.iter().fold(0, |acc, v| acc + v.bit_size())
+    }
+}
+
+impl DekuWriteSizeHint for CStr {
+    fn bit_size(&self) -> usize {
+        self.to_bytes_with_nul().bit_size()
     }
 }
 

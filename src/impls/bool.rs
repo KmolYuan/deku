@@ -9,6 +9,8 @@ use crate::reader::Reader;
 use crate::writer::Writer;
 use crate::{DekuError, DekuReader, DekuWriter};
 
+use super::ImplDekuSized;
+
 impl<'a, Ctx> DekuReader<'a, Ctx> for bool
 where
     Ctx: Copy,
@@ -48,6 +50,8 @@ where
         }
     }
 }
+
+ImplDekuSized!(bool);
 
 #[cfg(test)]
 mod tests {

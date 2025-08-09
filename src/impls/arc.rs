@@ -7,6 +7,8 @@ use crate::reader::Reader;
 use crate::writer::Writer;
 use crate::{DekuError, DekuReader, DekuWriter};
 
+use super::ImplDekuPointerSized;
+
 impl<'a, T, Ctx> DekuReader<'a, Ctx> for Arc<T>
 where
     T: DekuReader<'a, Ctx>,
@@ -70,6 +72,8 @@ where
         Ok(())
     }
 }
+
+ImplDekuPointerSized!(Arc<T>);
 
 #[cfg(test)]
 #[allow(clippy::too_many_arguments)]
