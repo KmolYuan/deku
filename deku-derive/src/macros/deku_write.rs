@@ -2,7 +2,7 @@ use std::convert::TryFrom;
 
 use darling::ast::{Data, Fields};
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{quote, ToTokens};
 use syn::LitStr;
 
 use crate::macros::{
@@ -144,6 +144,75 @@ fn emit_struct(input: &DekuData) -> Result<TokenStream, syn::Error> {
         }
     };
 
+    let (is_sized, has_size_hint) = match (&input.sized, &input.size_hint) {
+        (Some(s), _) if s.for_writer() => (true, true),
+        (_, Some(s)) if s.for_writer() => (false, true),
+        _ => (false, false),
+    };
+    if has_size_hint {
+        if let Some(seek) = (input.seek_from_start.as_ref())
+            .or(input.seek_from_current.as_ref())
+            .or(input.seek_from_end.as_ref())
+        {
+            return Err(syn::Error::new_spanned(
+                seek,
+                "cannot use `seek_*` with size hints",
+            ));
+        } else if input.seek_rewind {
+            return Err(syn::Error::new_spanned(
+                &input.ident,
+                "cannot use `seek_*` with size hints",
+            ));
+        }
+    }
+
+    let mut size_hint = quote! { 0 }; // DekuWriteSizeHint
+    let mut sized = quote! { 0 }; // DekuWriteSized
+
+    if has_size_hint {
+        if let Some(magic) = &input.magic {
+            emit_frag_size_hint(&mut size_hint, &mut sized, quote! { + #magic.len() });
+        }
+
+        for (i, field) in fields.iter().enumerate() {
+            emit_field_size_hint(
+                &crate_,
+                i,
+                field,
+                Some(quote! { &self. }),
+                &mut size_hint,
+                &mut sized,
+                is_sized,
+            )?;
+        }
+
+        if is_sized {
+            tokens.extend(quote! {
+                #[automatically_derived]
+                impl #imp ::#crate_::DekuWriteSizeHint for #ident #wher {
+                    #[inline]
+                    fn bit_size(&self) -> usize {
+                        <Self as #crate_::DekuWriteSized>::BIT_SIZE
+                    }
+                }
+                #[automatically_derived]
+                impl #imp ::#crate_::DekuWriteSized for #ident #wher {
+                    const BIT_SIZE: usize = #sized;
+                }
+            });
+        } else {
+            tokens.extend(quote! {
+                #[automatically_derived]
+                impl #imp ::#crate_::DekuWriteSizeHint for #ident #wher {
+                    #[inline]
+                    fn bit_size(&self) -> usize {
+                        #size_hint
+                    }
+                }
+            });
+        }
+    }
+
     // avoid outputing `use core::convert::TryInto` if update() function is empty
     let update_use = check_update_use(&field_updates);
 
@@ -208,6 +277,68 @@ fn emit_enum(input: &DekuData) -> Result<TokenStream, syn::Error> {
     let mut variant_updates = Vec::with_capacity(variants.len());
 
     let has_discriminant = variants.iter().any(|v| v.discriminant.is_some());
+
+    let (is_sized, has_size_hint) = match (&input.sized, &input.size_hint) {
+        (Some(s), _) if s.for_writer() => (true, true),
+        (_, Some(s)) if s.for_writer() => (false, true),
+        _ => (false, false),
+    };
+    if has_size_hint {
+        if let Some(seek) = (input.seek_from_start.as_ref())
+            .or(input.seek_from_current.as_ref())
+            .or(input.seek_from_end.as_ref())
+        {
+            return Err(syn::Error::new_spanned(
+                seek,
+                "cannot use `seek_*` with size hints",
+            ));
+        } else if input.seek_rewind {
+            return Err(syn::Error::new_spanned(
+                &input.ident,
+                "cannot use `seek_*` with size hints",
+            ));
+        }
+    }
+
+    let id_size = if let Some(id_type) = id_type.as_ref() {
+        quote! { <#id_type as #crate_::DekuWriteSized>::BIT_SIZE }
+    } else if let Some(bits) = &input.bits {
+        quote! { #bits }
+    } else if let Some(bytes) = &input.bytes {
+        quote! { #bytes * 8 }
+    } else if let (Some(id), Some(ctx)) = (&input.id, &input.ctx) {
+        // Search for the type of the id
+        let id_str = id.to_token_stream().to_string();
+        'search_id_type: {
+            for arg in ctx {
+                let syn::FnArg::Typed(pat_type) = arg else {
+                    continue;
+                };
+                if pat_type.pat.to_token_stream().to_string() == id_str {
+                    let ty = &pat_type.ty;
+                    break 'search_id_type quote! { <#ty as #crate_::DekuWriteSized>::BIT_SIZE };
+                }
+            }
+            if has_size_hint {
+                return Err(syn::Error::new_spanned(
+                    id,
+                    "id is limited to a single ctx argument",
+                ));
+            } else {
+                quote! { 0 }
+            }
+        }
+    } else {
+        unreachable!("should be checked by validation");
+    };
+    let mut size_hint = id_size.clone(); // DekuWriteSizeHint
+    let mut size_hint_matcher = quote! {}; // DekuWriteSizeHint
+    let mut sized = id_size; // DekuWriteSized
+    let mut sized_matcher = Vec::new(); // DekuWriteSized
+
+    if let Some(magic) = &input.magic {
+        emit_frag_size_hint(&mut size_hint, &mut sized, quote! { + #magic.len() });
+    }
 
     for variant in variants {
         // check if the first field has an ident, if not, it's a unnamed struct
@@ -333,6 +464,26 @@ fn emit_enum(input: &DekuData) -> Result<TokenStream, syn::Error> {
             }
         };
 
+        if has_size_hint {
+            let mut size_hint_variant = quote! { 0 };
+            let mut sized_variant = quote! { 0 };
+            for (i, field) in variant.fields.iter().enumerate() {
+                emit_field_size_hint(
+                    &crate_,
+                    i,
+                    field,
+                    None,
+                    &mut size_hint_variant, // TODO: Fix this
+                    &mut sized_variant,
+                    is_sized,
+                )?;
+            }
+            size_hint_matcher.extend(quote! {
+                Self :: #variant_match => #size_hint_variant,
+            });
+            sized_matcher.push(sized_variant);
+        }
+
         let variant_field_updates = emit_field_updates(&variant.fields.as_ref(), None);
 
         variant_writes.push(quote! {
@@ -435,6 +586,45 @@ fn emit_enum(input: &DekuData) -> Result<TokenStream, syn::Error> {
                 #[inline]
                 fn to_writer<W: ::#crate_::no_std_io::Write + ::#crate_::no_std_io::Seek>(&self, __deku_writer: &mut ::#crate_::writer::Writer<W>, _: ()) -> core::result::Result<(), ::#crate_::DekuError> {
                     #write_body
+                }
+            }
+        });
+    }
+
+    if is_sized {
+        tokens.extend(quote! {
+            #[automatically_derived]
+            impl #imp ::#crate_::DekuWriteSizeHint for #ident #wher {
+                #[inline]
+                fn bit_size(&self) -> usize {
+                    <Self as #crate_::DekuWriteSized>::BIT_SIZE
+                }
+            }
+            #[automatically_derived]
+            impl #imp ::#crate_::DekuWriteSized for #ident #wher {
+                const BIT_SIZE: usize = #sized + {
+                    let all_vars = [#(#sized_matcher),*];
+                    let first = all_vars[0];
+                    if all_vars.len() > 1 {
+                        let mut i = 1;
+                        while i < all_vars.len() {
+                            if all_vars[i] != first {
+                                panic!("all variants must have the same size");
+                            }
+                            i += 1;
+                        }
+                    }
+                    first
+                };
+            }
+        });
+    } else if has_size_hint {
+        tokens.extend(quote! {
+            #[automatically_derived]
+            impl #imp ::#crate_::DekuWriteSizeHint for #ident #wher {
+                #[inline]
+                fn bit_size(&self) -> usize {
+                    #size_hint + match self { #size_hint_matcher }
                 }
             }
         });
@@ -849,6 +1039,93 @@ fn emit_field_write(
     };
 
     Ok(field_write)
+}
+
+fn emit_frag_size_hint(size_hint: &mut TokenStream, sized: &mut TokenStream, frag: TokenStream) {
+    size_hint.extend(frag.clone());
+    sized.extend(frag);
+}
+
+fn emit_field_size_hint(
+    crate_: &syn::Ident,
+    i: usize,
+    field: &FieldData,
+    object_prefix: Option<TokenStream>,
+    size_hint: &mut TokenStream,
+    sized: &mut TokenStream,
+    is_sized: bool,
+) -> Result<(), syn::Error> {
+    if field.temp {
+        return Ok(());
+    }
+
+    // Unsupported attributes
+    if let Some(writer) = &field.writer {
+        return Err(syn::Error::new_spanned(
+            writer,
+            "cannot use `writer` with size hints",
+        ));
+    } else if let Some(seek) = (field.seek_from_start.as_ref())
+        .or(field.seek_from_current.as_ref())
+        .or(field.seek_from_end.as_ref())
+    {
+        return Err(syn::Error::new_spanned(
+            seek,
+            "cannot use `seek_*` with size hints",
+        ));
+    } else if field.seek_rewind {
+        return Err(syn::Error::new_spanned(
+            &field.ident,
+            "cannot use `seek_*` with size hints",
+        ));
+    }
+
+    // Pad before
+    if let Some(bits) = &field.pad_bits_before {
+        emit_frag_size_hint(size_hint, sized, quote! { + #bits });
+    } else if let Some(bytes) = &field.pad_bytes_before {
+        emit_frag_size_hint(size_hint, sized, quote! { + #bytes * 8 });
+    }
+
+    if let Some(magic) = &field.magic {
+        emit_frag_size_hint(size_hint, sized, quote! { + #magic.len() });
+    }
+
+    // Representation
+    let field_name = field.get_ident(i, object_prefix.is_none());
+    let field_size = quote! { #crate_::DekuWriteSizeHint::bit_size(#object_prefix #field_name) };
+    if let Some(bits) = &field.bits {
+        emit_frag_size_hint(size_hint, sized, quote! { + #bits });
+    } else if let Some(bytes) = &field.bytes {
+        emit_frag_size_hint(size_hint, sized, quote! { + #bytes * 8 });
+    } else if let Some(cond) = &field.cond {
+        size_hint.extend(quote! { + if #cond { #field_size } else { 0 } });
+        if is_sized {
+            return Err(syn::Error::new_spanned(
+                cond,
+                "cannot use `cond` with compile-time size hints",
+            ));
+        }
+    } else if field.skip && field.cond.is_none() {
+        return Ok(());
+    } else {
+        size_hint.extend(quote! { + #field_size });
+        let ty = match &field.ty {
+            // De-reference once
+            syn::Type::Reference(reference) => &reference.elem,
+            ty => ty,
+        };
+        // TODO: How to know if the type implements DekuWriteSized?
+        sized.extend(quote! { + <#ty as #crate_::DekuWriteSized>::BIT_SIZE });
+    }
+
+    // Pad after
+    if let Some(bits) = &field.pad_bits_after {
+        emit_frag_size_hint(size_hint, sized, quote! { + #bits });
+    } else if let Some(bytes) = &field.pad_bytes_after {
+        emit_frag_size_hint(size_hint, sized, quote! { + #bytes * 8 });
+    }
+    Ok(())
 }
 
 /// avoid outputing `use core::convert::TryInto` if update() function is generated with empty Vec
