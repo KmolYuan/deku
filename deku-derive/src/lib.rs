@@ -127,6 +127,45 @@ impl FromMeta for Num {
     }
 }
 
+#[derive(Debug)]
+enum SizedOption {
+    All,
+    Writer,
+    Reader,
+}
+
+impl SizedOption {
+    fn for_writer(&self) -> bool {
+        matches!(self, Self::Writer | Self::All)
+    }
+
+    fn is_overlapped(&self, rhs: &Self) -> bool {
+        matches!(
+            (self, rhs),
+            (Self::All, _)
+                | (_, Self::All)
+                | (Self::Reader, Self::Reader)
+                | (Self::Writer, Self::Writer)
+        )
+    }
+}
+
+impl FromMeta for SizedOption {
+    fn from_string(value: &str) -> darling::Result<Self> {
+        match value {
+            "writer" => Ok(Self::Writer),
+            "reader" => Ok(Self::Reader),
+            _ => Err(darling::Error::custom(
+                "invalid value, should be one of `writer`, `reader` or none specified",
+            )),
+        }
+    }
+
+    fn from_word() -> darling::Result<Self> {
+        Ok(Self::All)
+    }
+}
+
 fn cerror(span: proc_macro2::Span, msg: &str) -> TokenStream {
     syn::Error::new(span, msg).to_compile_error()
 }
@@ -139,6 +178,12 @@ struct DekuData {
     data: ast::Data<VariantData, FieldData>,
 
     repr: Option<ReprType>,
+
+    /// Evaluate the deku runtime size and implement `SizeHint` trait
+    size_hint: Option<SizedOption>,
+
+    /// Evaluate the deku compile-time size and implement `Sized` trait
+    sized: Option<SizedOption>,
 
     /// Endianness for all fields
     endian: Option<syn::LitStr>,
@@ -309,6 +354,8 @@ impl DekuData {
             generics: receiver.generics,
             data,
             repr,
+            size_hint: receiver.size_hint,
+            sized: receiver.sized,
             endian: receiver.endian,
             ctx: receiver.ctx,
             ctx_default: receiver.ctx_default,
@@ -332,6 +379,16 @@ impl DekuData {
     }
 
     fn validate(data: &DekuData) -> Result<(), TokenStream> {
+        // Validate `sized` and `size_hint` are not used together
+        if let (Some(sized), Some(size_hint)) = (&data.sized, &data.size_hint) {
+            if sized.is_overlapped(size_hint) {
+                return Err(cerror(
+                    data.ident.span(),
+                    "`sized` and `size_hint` are not compatible",
+                ));
+            }
+        }
+
         // Validate `ctx_default`
         if data.ctx_default.is_some() && data.ctx.is_none() {
             // FIXME: Use `Span::join` once out of nightly
@@ -898,6 +955,14 @@ struct DekuReceiver {
     ident: syn::Ident,
     generics: syn::Generics,
     data: ast::Data<DekuVariantReceiver, DekuFieldReceiver>,
+
+    /// Evaluate the deku runtime size and implement `SizeHint` trait
+    #[darling(default)]
+    size_hint: Option<SizedOption>,
+
+    /// Evaluate the deku compile-time size and implement `Sized` trait
+    #[darling(default)]
+    sized: Option<SizedOption>,
 
     /// Endianness for all fields
     #[darling(default)]
